@@ -54,7 +54,7 @@ struct Config: Equatable {
     ///   are skipped.
     /// - Returns: A `Config` value. Returns an empty `Config()` when no file is found or
     ///   all files are unreadable, so callers always receive a valid struct.
-    static func load(override overridePath: String? = nil) -> Config {
+    nonisolated static func load(override overridePath: String? = nil) -> Config {
         if let overridePath {
             return (try? parse(contentsOf: overridePath)) ?? Config()
         }
@@ -80,7 +80,7 @@ struct Config: Equatable {
     /// Throws only when the file cannot be read (e.g. missing or permissions error).
     /// Unknown keys and malformed value lines are silently skipped so the parser is
     /// forward-compatible with future schema additions.
-    static func parse(contentsOf path: String) throws -> Config {
+    nonisolated static func parse(contentsOf path: String) throws -> Config {
         let contents = try String(contentsOfFile: path, encoding: .utf8)
         return parse(toml: contents)
     }
@@ -96,7 +96,7 @@ struct Config: Equatable {
     /// - String arrays: `key = ["a", "b"]`
     /// - Inline comments (`# …`) are stripped.
     /// - Leading/trailing whitespace on each line is ignored.
-    static func parse(toml: String) -> Config {
+    nonisolated static func parse(toml: String) -> Config {
         var gitFields: [String: TOMLValue] = [:]
         var crashesFields: [String: TOMLValue] = [:]
         var logsFields: [String: TOMLValue] = [:]
@@ -155,7 +155,7 @@ struct Config: Equatable {
     /// Strips a trailing inline comment (`# …`) from a raw line.
     ///
     /// A `#` inside a quoted string is **not** treated as a comment.
-    private static func stripComment(_ line: String) -> String {
+    private nonisolated static func stripComment(_ line: String) -> String {
         var inString = false
         var escaped = false
         for (offset, char) in line.enumerated() {
@@ -181,7 +181,7 @@ struct Config: Equatable {
     /// Parses a single TOML value token (the right-hand side of an assignment).
     ///
     /// Returns `nil` when the token is not a recognised string or string-array literal.
-    private static func parseTOMLValue(_ raw: String) -> TOMLValue? {
+    private nonisolated static func parseTOMLValue(_ raw: String) -> TOMLValue? {
         let s = raw.trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("[") {
             return .array(parseStringArray(s))
@@ -195,7 +195,7 @@ struct Config: Equatable {
     /// Parses a TOML inline array of quoted strings: `["a", "b", "c"]`.
     ///
     /// Non-string elements and malformed entries are silently skipped.
-    private static func parseStringArray(_ raw: String) -> [String] {
+    private nonisolated static func parseStringArray(_ raw: String) -> [String] {
         // Strip outer brackets
         var inner = raw.trimmingCharacters(in: .whitespaces)
         guard inner.hasPrefix("[") && inner.hasSuffix("]") else { return [] }
@@ -210,7 +210,7 @@ struct Config: Equatable {
     /// Extracts the content of a double-quoted TOML string literal.
     ///
     /// Returns `nil` when `raw` is not wrapped in `"…"`.
-    private static func parseQuotedString(_ raw: String) -> String? {
+    private nonisolated static func parseQuotedString(_ raw: String) -> String? {
         let s = raw.trimmingCharacters(in: .whitespaces)
         guard s.hasPrefix("\"") && s.hasSuffix("\"") && s.count >= 2 else { return nil }
         var result = String(s.dropFirst().dropLast())
@@ -231,12 +231,12 @@ private enum TOMLValue {
     case string(String)
     case array([String])
 
-    var string: String? {
+    nonisolated var string: String? {
         if case .string(let s) = self { return s }
         return nil
     }
 
-    var array: [String]? {
+    nonisolated var array: [String]? {
         if case .array(let a) = self { return a }
         return nil
     }
