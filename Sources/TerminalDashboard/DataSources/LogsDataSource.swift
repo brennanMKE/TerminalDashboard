@@ -349,6 +349,21 @@ final class LogsState: ObservableObject {
         Task { await source.stop() }
     }
 
+    /// Toggles pause/resume state.
+    func togglePause() {
+        if isPaused {
+            resume()
+        } else {
+            isPaused = true
+        }
+    }
+
+    /// Clears all displayed entries and the pause buffer.
+    func clear() {
+        entries.removeAll()
+        pauseBuffer.removeAll()
+    }
+
     /// Resumes delivery of entries: flushes the pause buffer and re-enables live updates.
     func resume() {
         isPaused = false
