@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Swift / SPM
+/.build
+/Packages
+*.o
+*.d
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# tuidash project config (commit if you want shared defaults for this repo)
+.tuidash.toml
+
+# Crash extractions
+crashes/

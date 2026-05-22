@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TerminalDashboard}",
+            "name": "Debug TerminalDashboard",
+            "target": "TerminalDashboard",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug TerminalDashboard"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TerminalDashboard}",
+            "name": "Release TerminalDashboard",
+            "target": "TerminalDashboard",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release TerminalDashboard"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TerminalDashboard}",
+            "name": "Debug tuidash",
+            "target": "tuidash",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug tuidash"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:TerminalDashboard}",
+            "name": "Release tuidash",
+            "target": "tuidash",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release tuidash"
+        }
+    ]
+}

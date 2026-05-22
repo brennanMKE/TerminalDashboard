@@ -1,0 +1,21 @@
+# Normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Swift source
+*.swift text diff=swift
+
+# Package manifest and lockfile
+Package.swift text
+Package.resolved text
+
+# Config and docs
+*.toml text
+*.json text
+*.md   text diff=markdown
+
+# Shell scripts
+*.sh text eol=lf
+
+# Binary build artifacts — do not diff
+*.o binary
+*.a binary
