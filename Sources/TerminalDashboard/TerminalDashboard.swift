@@ -1,14 +1,20 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
-//
-// Swift Argument Parser
-// https://swiftpackageindex.com/apple/swift-argument-parser/documentation
-
 import ArgumentParser
 
 @main
 struct TerminalDashboard: ParsableCommand {
-    mutating func run() throws {
-        print("Hello, world!")
-    }
+    static let configuration = CommandConfiguration(
+        commandName: "tuidash",
+        abstract: "A collection of live terminal dashboards for Git, Crashes, and Logs.",
+        subcommands: [
+            AutoCommand.self,
+            GitCommand.self,
+            CrashesCommand.self,
+            LogsCommand.self,
+            ConfigCommand.self,
+        ],
+        defaultSubcommand: AutoCommand.self
+    )
+
+    @Option(name: .long, help: "Path to a custom configuration file.")
+    var config: String?
 }
