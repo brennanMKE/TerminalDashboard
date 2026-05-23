@@ -110,6 +110,9 @@ struct AutoCommand: ParsableCommand {
             coord.activeView = initialView
             coord.homeView = initialView
             coord.start(gitState: git, crashesState: crashes, logsState: logs)
+            // Attach the display sleep/wake monitor — suspends all three data
+            // sources when the display sleeps and resumes them on wake.
+            coord.attachSleepWakeMonitor()
             return (git, crashes, logs, coord)
         }
 

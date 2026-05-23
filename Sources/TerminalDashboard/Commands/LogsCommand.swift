@@ -54,6 +54,9 @@ struct LogsCommand: ParsableCommand {
         let state = MainActor.assumeIsolated {
             let s = LogsState(config: logsConfig)
             s.start()
+            // Attach the display sleep/wake monitor — terminates `log stream`
+            // when the display sleeps and relaunches it on wake.
+            s.attachSleepWakeMonitor()
             return s
         }
 

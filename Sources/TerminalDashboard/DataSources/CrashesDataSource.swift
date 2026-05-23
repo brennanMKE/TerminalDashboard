@@ -59,6 +59,10 @@ actor CrashesDataSource {
     /// Stored as `AnyObject` to avoid the non-`Sendable` `DispatchSourceFileSystemObject` type.
     private var dispatchSources: [AnyObject] = []
 
+    /// The currently running polling/scan task, if any. Held so it can be
+    /// cancelled when `suspend()` or `stop()` is called.
+    private var watcherTask: Task<Void, Never>? = nil
+
     // MARK: AsyncStream
 
     private var eventContinuation: AsyncStream<DashboardEvent>.Continuation?
@@ -86,15 +90,41 @@ actor CrashesDataSource {
     }
 
     /// Starts watching directories and performs an initial scan.
+    /// Safe to call multiple times (subsequent calls are no-ops if a watcher
+    /// task is already running).
     func start() {
-        Task { await runWatcher() }
+        guard watcherTask == nil else { return }
+        watcherTask = Task { await runWatcher(emitOnInitialScan: false) }
     }
 
     /// Stops all watchers and finishes the event stream.
     func stop() {
+        watcherTask?.cancel()
+        watcherTask = nil
         cancelDispatchSources()
         eventContinuation?.finish()
         eventContinuation = nil
+    }
+
+    /// Suspends the watcher: cancels the polling loop and tears down all
+    /// `DispatchSource` watchers. Known-file state is preserved so the UI
+    /// continues to display the existing report list, and so that no duplicate
+    /// events are emitted for already-seen files after `resume()`.
+    func suspend() {
+        watcherTask?.cancel()
+        watcherTask = nil
+        cancelDispatchSources()
+    }
+
+    /// Resumes the watcher after a `suspend()`. Re-scans existing directories
+    /// (which will emit events for any files that appeared while suspended) and
+    /// re-attaches `DispatchSource` watchers. Safe to call when not suspended
+    /// (no-op if a watcher task is already running).
+    func resume() {
+        guard watcherTask == nil else { return }
+        // emitOnInitialScan: true — previously-seen files are tracked in
+        // `knownFiles` so only files that appeared while suspended will fire.
+        watcherTask = Task { await runWatcher(emitOnInitialScan: true) }
     }
 
     // MARK: Private helpers
@@ -103,10 +133,12 @@ actor CrashesDataSource {
         self.eventContinuation = continuation
     }
 
-    private func runWatcher() async {
-        // Initial scan of all existing files.
+    private func runWatcher(emitOnInitialScan: Bool) async {
+        // Initial scan of all existing files. On `start()` we suppress events
+        // (existing files at launch shouldn't fire); on `resume()` we emit so
+        // files that appeared while suspended surface as new events.
         for path in CrashesDataSource.watchedPaths {
-            scanDirectory(at: path, emitEvents: false)
+            scanDirectory(at: path, emitEvents: emitOnInitialScan)
         }
 
         // Set up DispatchSource watchers for directories that currently exist.
@@ -302,6 +334,10 @@ final class CrashesState: ObservableObject {
     private var watchTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
 
+    /// Owns the display sleep/wake notification subscription for the lifetime
+    /// of the state object. Set via `attachSleepWakeMonitor()`.
+    private var sleepWakeMonitor: SleepWakeMonitor? = nil
+
     /// Called on the `MainActor` whenever the data source emits a `DashboardEvent`.
     var onEvent: (@MainActor (DashboardEvent) -> Void)?
 
@@ -341,6 +377,35 @@ final class CrashesState: ObservableObject {
         watchTask?.cancel()
         eventTask?.cancel()
         Task { await source.stop() }
+    }
+
+    /// Suspends the underlying data source's filesystem watchers. The published
+    /// report list is preserved so the UI still shows existing reports.
+    func suspend() {
+        Task { await source.suspend() }
+    }
+
+    /// Resumes the underlying data source's watchers after a `suspend()`. Any
+    /// crash reports that appeared while suspended will surface as events.
+    func resume() {
+        Task { await source.resume() }
+    }
+
+    /// Creates and starts a `SleepWakeMonitor` whose callbacks suspend and
+    /// resume this data source. The monitor is retained by the state for the
+    /// lifetime of the run. Safe to call multiple times (no-op if already
+    /// attached).
+    func attachSleepWakeMonitor() {
+        guard sleepWakeMonitor == nil else { return }
+        let monitor = SleepWakeMonitor()
+        monitor.onSleep = { [weak self] in
+            self?.suspend()
+        }
+        monitor.onWake = { [weak self] in
+            self?.resume()
+        }
+        monitor.start()
+        sleepWakeMonitor = monitor
     }
 
     // MARK: - Private

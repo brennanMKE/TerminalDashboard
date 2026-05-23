@@ -44,6 +44,9 @@ struct GitCommand: ParsableCommand {
         let state = MainActor.assumeIsolated {
             let s = GitState(repoPath: repoPath)
             s.start()
+            // Attach the display sleep/wake monitor — suspends polling when
+            // the display sleeps and resumes it on wake.
+            s.attachSleepWakeMonitor()
             return s
         }
 

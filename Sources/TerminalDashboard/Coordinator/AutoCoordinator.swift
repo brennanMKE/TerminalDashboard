@@ -45,6 +45,19 @@ final class AutoCoordinator: ObservableObject {
     /// when a new higher-priority event fires.
     private var countdownTask: Task<Void, Never>? = nil
 
+    /// References to the three state objects, retained so `suspendAll()` and
+    /// `resumeAll()` can drive them on display sleep/wake.
+    private var gitState: GitState? = nil
+    private var crashesState: CrashesState? = nil
+    private var logsState: LogsState? = nil
+
+    /// `true` while all data sources are suspended due to display sleep.
+    private(set) var isSuspended: Bool = false
+
+    /// Owns the display sleep/wake notification subscription for the lifetime
+    /// of the coordinator. Set via `attachSleepWakeMonitor()`.
+    private var sleepWakeMonitor: SleepWakeMonitor? = nil
+
     // MARK: - Constants
 
     private static let countdownDuration = 10
@@ -54,6 +67,10 @@ final class AutoCoordinator: ObservableObject {
     /// Wires up `onEvent` callbacks on all three state objects and starts the
     /// data sources.
     func start(gitState: GitState, crashesState: CrashesState, logsState: LogsState) {
+        self.gitState = gitState
+        self.crashesState = crashesState
+        self.logsState = logsState
+
         gitState.onEvent = { [weak self] event in
             self?.handle(event)
         }
@@ -67,6 +84,43 @@ final class AutoCoordinator: ObservableObject {
         gitState.start()
         crashesState.start()
         logsState.start()
+    }
+
+    /// Suspends all three data sources. Called on display-sleep notifications.
+    /// Safe to call when already suspended.
+    func suspendAll() {
+        guard !isSuspended else { return }
+        isSuspended = true
+        gitState?.suspend()
+        crashesState?.suspend()
+        logsState?.suspend()
+    }
+
+    /// Resumes all three data sources after a `suspendAll()`. Called on
+    /// display-wake notifications. Safe to call when not suspended.
+    func resumeAll() {
+        guard isSuspended else { return }
+        isSuspended = false
+        gitState?.resume()
+        crashesState?.resume()
+        logsState?.resume()
+    }
+
+    /// Creates and starts a `SleepWakeMonitor` whose callbacks suspend and
+    /// resume all three data sources. The monitor is retained by the
+    /// coordinator for the lifetime of the run. Safe to call multiple times
+    /// (subsequent calls are no-ops).
+    func attachSleepWakeMonitor() {
+        guard sleepWakeMonitor == nil else { return }
+        let monitor = SleepWakeMonitor()
+        monitor.onSleep = { [weak self] in
+            self?.suspendAll()
+        }
+        monitor.onWake = { [weak self] in
+            self?.resumeAll()
+        }
+        monitor.start()
+        sleepWakeMonitor = monitor
     }
 
     /// Manual view switch: new view becomes home, countdown is cancelled, auto

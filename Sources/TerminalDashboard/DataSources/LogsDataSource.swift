@@ -151,6 +151,26 @@ actor LogsDataSource {
         eventContinuation = nil
     }
 
+    /// Suspends streaming: terminates the `log stream` subprocess and cancels
+    /// the reader task. Accumulated `entries` are preserved so the UI still
+    /// shows the last batch of log lines until `resume()` is called.
+    func suspend() {
+        readingTask?.cancel()
+        readingTask = nil
+        if let proc = process, proc.isRunning {
+            proc.terminate()
+        }
+        process = nil
+    }
+
+    /// Resumes streaming after a `suspend()` by relaunching the `log stream`
+    /// subprocess with the same configuration. No-op if a process is already
+    /// running.
+    func resume() {
+        guard process == nil else { return }
+        start()
+    }
+
     // MARK: Private helpers
 
     private func storeContinuation(_ continuation: AsyncStream<DashboardEvent>.Continuation) {
@@ -311,6 +331,10 @@ final class LogsState: ObservableObject {
     /// Buffer for entries received while `isPaused` is `true`.
     private var pauseBuffer: [LogEntry] = []
 
+    /// Owns the display sleep/wake notification subscription for the lifetime
+    /// of the state object. Set via `attachSleepWakeMonitor()`.
+    private var sleepWakeMonitor: SleepWakeMonitor? = nil
+
     init(config: LogsConfig) {
         self.source = LogsDataSource(config: config)
         self.filterSummary = Self.buildFilterSummary(config)
@@ -349,10 +373,41 @@ final class LogsState: ObservableObject {
         Task { await source.stop() }
     }
 
+    /// Suspends the underlying `log stream` subprocess. The published entries
+    /// are preserved so the UI still shows the last batch of log lines.
+    func suspend() {
+        Task { await source.suspend() }
+    }
+
+    /// Resumes the underlying `log stream` subprocess after a `suspend()`.
+    /// Streaming continues from a fresh `log stream` invocation — log lines
+    /// emitted while suspended are lost (matching what `log stream` itself
+    /// would do).
+    func resume() {
+        Task { await source.resume() }
+    }
+
+    /// Creates and starts a `SleepWakeMonitor` whose callbacks suspend and
+    /// resume this data source. The monitor is retained by the state for the
+    /// lifetime of the run. Safe to call multiple times (no-op if already
+    /// attached).
+    func attachSleepWakeMonitor() {
+        guard sleepWakeMonitor == nil else { return }
+        let monitor = SleepWakeMonitor()
+        monitor.onSleep = { [weak self] in
+            self?.suspend()
+        }
+        monitor.onWake = { [weak self] in
+            self?.resume()
+        }
+        monitor.start()
+        sleepWakeMonitor = monitor
+    }
+
     /// Toggles pause/resume state.
     func togglePause() {
         if isPaused {
-            resume()
+            resumeFromPause()
         } else {
             isPaused = true
         }
@@ -364,8 +419,11 @@ final class LogsState: ObservableObject {
         pauseBuffer.removeAll()
     }
 
-    /// Resumes delivery of entries: flushes the pause buffer and re-enables live updates.
-    func resume() {
+    /// Resumes delivery of entries after a user-initiated pause: flushes the
+    /// pause buffer and re-enables live UI updates. This is distinct from
+    /// `resume()`, which restarts the underlying subprocess after display
+    /// sleep.
+    func resumeFromPause() {
         isPaused = false
         if !pauseBuffer.isEmpty {
             // Append buffered entries (respecting capacity)

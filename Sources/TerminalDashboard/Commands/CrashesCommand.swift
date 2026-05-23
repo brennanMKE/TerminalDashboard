@@ -44,6 +44,9 @@ struct CrashesCommand: ParsableCommand {
         let state = MainActor.assumeIsolated {
             let s = CrashesState(appFilter: appFilter)
             s.start()
+            // Attach the display sleep/wake monitor — suspends watchers when
+            // the display sleeps and resumes them on wake.
+            s.attachSleepWakeMonitor()
             return s
         }
 

@@ -47,6 +47,12 @@ actor GitDataSource {
 
     private var eventContinuation: AsyncStream<DashboardEvent>.Continuation?
 
+    // MARK: Polling task
+
+    /// The currently running polling task, if any. Held so it can be cancelled
+    /// when `suspend()` or `stop()` is called.
+    private var pollingTask: Task<Void, Never>? = nil
+
     // MARK: Init
 
     init(repoPath: String = ".", pollInterval: Duration = .seconds(2)) {
@@ -67,15 +73,33 @@ actor GitDataSource {
     }
 
     /// Starts the polling loop. Safe to call multiple times (subsequent calls
-    /// are no-ops if already running).
+    /// are no-ops if a polling task is already running).
     func start() {
-        Task { await runLoop() }
+        guard pollingTask == nil else { return }
+        pollingTask = Task { await runLoop() }
     }
 
     /// Stops the polling loop and finishes the event stream.
     func stop() {
+        pollingTask?.cancel()
+        pollingTask = nil
         eventContinuation?.finish()
         eventContinuation = nil
+    }
+
+    /// Suspends polling without closing the event stream. The actor's state
+    /// (branch, files, etc.) is preserved so the UI continues to reflect the
+    /// last known status until `resume()` is called.
+    func suspend() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    /// Resumes polling after a `suspend()`. Safe to call when not suspended
+    /// (no-op if a polling task is already running).
+    func resume() {
+        guard pollingTask == nil else { return }
+        pollingTask = Task { await runLoop() }
     }
 
     // MARK: Private helpers
@@ -282,6 +306,10 @@ final class GitState: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
 
+    /// Owns the display sleep/wake notification subscription for the lifetime
+    /// of the state object. Set via `attachSleepWakeMonitor()`.
+    private var sleepWakeMonitor: SleepWakeMonitor? = nil
+
     /// `onEvent` is called on the `MainActor` whenever the data source emits
     /// a `DashboardEvent` (e.g. for use by the coordinator).
     var onEvent: (@MainActor (DashboardEvent) -> Void)?
@@ -326,6 +354,34 @@ final class GitState: ObservableObject {
         pollingTask?.cancel()
         eventTask?.cancel()
         Task { await source.stop() }
+    }
+
+    /// Suspends the underlying data source's polling. The published state is
+    /// preserved so the UI still shows the last known status.
+    func suspend() {
+        Task { await source.suspend() }
+    }
+
+    /// Resumes the underlying data source's polling after a `suspend()`.
+    func resume() {
+        Task { await source.resume() }
+    }
+
+    /// Creates and starts a `SleepWakeMonitor` whose callbacks suspend and
+    /// resume this data source. The monitor is retained by the state for the
+    /// lifetime of the run. Safe to call multiple times (no-op if already
+    /// attached).
+    func attachSleepWakeMonitor() {
+        guard sleepWakeMonitor == nil else { return }
+        let monitor = SleepWakeMonitor()
+        monitor.onSleep = { [weak self] in
+            self?.suspend()
+        }
+        monitor.onWake = { [weak self] in
+            self?.resume()
+        }
+        monitor.start()
+        sleepWakeMonitor = monitor
     }
 
     // MARK: - Private
